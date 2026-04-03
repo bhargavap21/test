@@ -1,6 +1,6 @@
 # pm-latency
 
-Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6)).
+Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6), Phase 4: [#1](https://github.com/bhargavap21/test/issues/1)).
 
 ## Requirements
 
@@ -56,6 +56,17 @@ pm-runner ingest --no-cex
 ```
 
 Environment: `BINANCE_WS_BASE`, `POLYMARKET_CLOB_WS`, `PM_REGISTRY_PATH`.
+
+### Fair value & edge (Phase 4)
+
+Resolution-aware **contract** metadata (oracle hint from description + window bounds from slug epoch). **Model:** GBM with **zero drift**, EWMA vol from CEX mid (proxy—real settlement follows Chainlink per market text). **Edge** vs asks when you pass `--quotes-json`.
+
+```bash
+pm-runner fairvalue --cex-mid 95000.5 \
+  --quotes-json '{"TOKEN_ID":{"bid":0.48,"ask":0.52}}'
+```
+
+Use `--condition-id` to target one row. Anchor = first CEX mid **on or after** `window_start_ts` (simulated time advances via ticks in tests; live use feeds timestamps consistently).
 
 ## Tests
 
