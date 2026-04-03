@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from pm_latency.domain.models import TradedMarket
@@ -94,10 +95,57 @@ class MarketRegistry:
             row = conn.execute("SELECT COUNT(*) FROM markets").fetchone()
         return int(row[0]) if row else 0
 
+    def iter_tradable(self) -> Iterator[TradedMarket]:
+        """Markets that are open for orders (typical subscription target)."""
+        return self._iter_where("accepting_orders = 1 AND closed = 0")
+
+    def iter_all(self) -> Iterator[TradedMarket]:
+        return self._iter_where("1 = 1")
+
+    def _iter_where(self, where_sql: str) -> Iterator[TradedMarket]:
+        q = f"""
+            SELECT condition_id, market_id, event_id, event_slug, market_slug,
+                   asset, window_seconds, window_start_ts,
+                   title, question, description, resolution_source,
+                   tick_size, neg_risk, accepting_orders, closed, active,
+                   outcomes_json, token_ids_json, end_date
+            FROM markets
+            WHERE {where_sql}
+        """
+        with sqlite3.connect(self.path) as conn:
+            conn.row_factory = sqlite3.Row
+            for row in conn.execute(q):
+                yield _row_from_sqlite(row)
+
+
+def _row_from_sqlite(row: sqlite3.Row) -> TradedMarket:
+    outcomes = tuple(json.loads(row["outcomes_json"]))
+    token_ids = tuple(json.loads(row["token_ids_json"]))
+    return TradedMarket(
+        condition_id=str(row["condition_id"]),
+        market_id=str(row["market_id"]),
+        event_id=str(row["event_id"]),
+        event_slug=str(row["event_slug"]),
+        market_slug=str(row["market_slug"]),
+        asset=str(row["asset"]),
+        window_seconds=int(row["window_seconds"]),
+        window_start_ts=int(row["window_start_ts"]),
+        title=str(row["title"]),
+        question=str(row["question"]),
+        description=str(row["description"]),
+        resolution_source=str(row["resolution_source"]),
+        tick_size=float(row["tick_size"]),
+        neg_risk=bool(row["neg_risk"]),
+        accepting_orders=bool(row["accepting_orders"]),
+        closed=bool(row["closed"]),
+        active=bool(row["active"]),
+        outcomes=outcomes,
+        token_ids=token_ids,
+        end_date=row["end_date"] if row["end_date"] else None,
+    )
+
 
 def _row_tuple(r: TradedMarket) -> tuple:
-    import json
-
     return (
         r.condition_id,
         r.market_id,

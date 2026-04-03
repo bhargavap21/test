@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
 
     av = list(sys.argv[1:] if argv is None else argv)
 
+    if av and av[0] == "ingest":
+        from pm_latency.ops.ingest import main_ingest
+
+        return main_ingest(av[1:])
+
     if av and av[0] == "discover":
         dparser = argparse.ArgumentParser(
             prog="pm-runner discover",
@@ -60,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version="pm-latency 0.2.0",
+        version="pm-latency 0.3.0",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(

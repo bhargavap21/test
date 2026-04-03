@@ -1,6 +1,6 @@
 # pm-latency
 
-Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5)).
+Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6)).
 
 ## Requirements
 
@@ -43,6 +43,19 @@ pm-runner discover --registry /tmp/markets.db
 ```
 
 **Resolution:** these markets typically settle on **Chainlink** streams (see `resolution_source` / description in each row), not CEX spot—use that when wiring fair value in Phase 4.
+
+### Ingest CEX + Polymarket CLOB (Phase 3)
+
+Runs **Binance** combined `bookTicker` stream (`BTCUSDT` / `ETHUSDT` from registry assets) and **Polymarket** CLOB market WebSocket for all `token_id`s in the registry. Prints periodic JSON summaries (tick counts, receive-minus-exchange delay percentiles, last-tick age). Use `--verbose` for one JSON line per tick.
+
+```bash
+pm-runner discover
+pm-runner ingest --duration 30
+# If Binance WS returns HTTP 451 in your region:
+pm-runner ingest --no-cex
+```
+
+Environment: `BINANCE_WS_BASE`, `POLYMARKET_CLOB_WS`, `PM_REGISTRY_PATH`.
 
 ## Tests
 
