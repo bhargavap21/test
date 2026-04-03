@@ -23,9 +23,44 @@ def _env_dry_run() -> bool:
 def main(argv: list[str] | None = None) -> int:
     _load_dotenv()
 
+    av = list(sys.argv[1:] if argv is None else argv)
+
+    if av and av[0] == "discover":
+        dparser = argparse.ArgumentParser(
+            prog="pm-runner discover",
+            description="Probe Gamma for short BTC/ETH Up/Down windows and upsert SQLite registry.",
+        )
+        dparser.add_argument(
+            "--registry",
+            default=os.environ.get("PM_REGISTRY_PATH", "data/markets.db"),
+            help="SQLite path (default: data/markets.db or PM_REGISTRY_PATH).",
+        )
+        dparser.add_argument(
+            "--gamma-base",
+            default=os.environ.get("GAMMA_API_BASE", "https://gamma-api.polymarket.com"),
+            help="Gamma API origin (default: env GAMMA_API_BASE or production URL).",
+        )
+        args = dparser.parse_args(av[1:])
+
+        from pathlib import Path
+
+        from pm_latency.domain.registry import MarketRegistry
+        from pm_latency.ops.discover import refresh_registry
+
+        path = Path(args.registry)
+        reg = MarketRegistry(path)
+        n = refresh_registry(reg, gamma_base=args.gamma_base)
+        print(f"discover: upserted {n} market row(s) into {path}", file=sys.stderr)
+        return 0
+
     parser = argparse.ArgumentParser(
         prog="pm-runner",
-        description="Polymarket short-horizon bot. Phase 1: skeleton only.",
+        description="Polymarket short-horizon bot (incremental build).",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="pm-latency 0.2.0",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -38,13 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Allow live mode when execution is implemented (DRY_RUN=0).",
     )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="pm-latency 0.1.0",
-    )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(av)
 
     if args.live:
         dry_run = False

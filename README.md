@@ -1,6 +1,6 @@
 # pm-latency
 
-Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Work is tracked in GitHub issues on this repo (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3)).
+Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5)).
 
 ## Requirements
 
@@ -31,7 +31,18 @@ pm-runner --help
 python -m pm_latency.ops.runner --help
 ```
 
-Phase 1 only prints the resolved mode; the market loop arrives in later phases.
+Default command prints the resolved `DRY_RUN` mode (stub until the live loop exists).
+
+### Discover short BTC/ETH Up/Down markets (Phase 2)
+
+Probes Polymarket Gamma for `btc|eth-updown-5m|15m-<epoch>` slugs around the current UTC window and upserts rows into SQLite (default `data/markets.db`).
+
+```bash
+pm-runner discover
+pm-runner discover --registry /tmp/markets.db
+```
+
+**Resolution:** these markets typically settle on **Chainlink** streams (see `resolution_source` / description in each row), not CEX spot—use that when wiring fair value in Phase 4.
 
 ## Tests
 

@@ -25,3 +25,14 @@ def test_main_respects_flags(monkeypatch):
 def test_main_env_only(monkeypatch):
     monkeypatch.setenv("DRY_RUN", "1")
     assert runner.main([]) == 0
+
+
+def test_discover_command(monkeypatch, tmp_path):
+    from pm_latency.ops import discover as discover_mod
+
+    monkeypatch.setattr(discover_mod, "refresh_registry", lambda *a, **k: 2)
+
+    db = tmp_path / "m.db"
+    code = runner.main(["discover", "--registry", str(db)])
+    assert code == 0
+    assert db.exists()

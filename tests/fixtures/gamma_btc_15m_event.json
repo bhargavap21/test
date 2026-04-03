@@ -1,0 +1,25 @@
+{
+  "id": "329692",
+  "slug": "btc-updown-15m-1775065500",
+  "title": "Bitcoin Up or Down - April 1, 1:45PM-2:00PM ET",
+  "description": "This market will resolve to \"Up\" if the Bitcoin price at the end of the time range specified in the title is greater than or equal to the price at the beginning of that range. Otherwise, it will resolve to \"Down\".\nThe resolution source for this market is information from Chainlink, specifically the BTC/USD data stream available at https://data.chain.link/streams/btc-usd.\nPlease note that this market is about the price according to Chainlink data stream BTC/USD, not according to other sources or spot markets.",
+  "resolutionSource": "https://data.chain.link/streams/btc-usd",
+  "markets": [
+    {
+      "id": "1809075",
+      "question": "Bitcoin Up or Down - April 1, 1:45PM-2:00PM ET",
+      "conditionId": "0x2b9e40ce2b1dd7fc037e4bc3478882e9d4434fab5b8864ef03865d611e87ec08",
+      "slug": "btc-updown-15m-1775065500",
+      "resolutionSource": "https://data.chain.link/streams/btc-usd",
+      "endDate": "2026-04-01T18:00:00Z",
+      "description": "This market will resolve to \"Up\" if the Bitcoin price at the end of the time range specified in the title is greater than or equal to the price at the beginning of that range. Otherwise, it will resolve to \"Down\".\nThe resolution source for this market is information from Chainlink, specifically the BTC/USD data stream available at https://data.chain.link/streams/btc-usd.",
+      "outcomes": "[\"Up\", \"Down\"]",
+      "clobTokenIds": "[\"9114726601687906510460509540781618083173901210218947070627032200623416029257\", \"54883459787912091811587666335046307536551853822685835222170427670390006384149\"]",
+      "orderPriceMinTickSize": 0.001,
+      "negRisk": false,
+      "acceptingOrders": false,
+      "closed": true,
+      "active": true
+    }
+  ]
+}
