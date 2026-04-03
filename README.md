@@ -89,9 +89,11 @@ pm-runner discover
 pm-runner paper --duration 300 --min-edge 0.02 --log-file data/paper_intents.jsonl
 ```
 
-`paper` needs a **CEX mid** for the model; if Binance WS is blocked, point `BINANCE_WS_BASE` at another reachable feed or run `ingest`/`paper` from a host that can reach Binance.
+`paper` needs a **CEX mid** for the model. Default **`--cex auto`** tries **Binance**, then **Coinbase Exchange** (`BTC-USD` / `ETH-USD`) if Binance returns HTTP **451** or otherwise fails. Force one venue: `--cex coinbase` or `--cex binance`. Env: `CEX_PROVIDER`, `COINBASE_WS_URL`.
 
 Use `pm-runner risk kill` to verify intents show `risk_allowed: false`.
+
+Paper mode does **not** increment the risk engine’s orders-per-minute counter (so high `eval-interval` traffic does not false-trigger `rate_limit_orders_per_minute`). Live execution will call `record_order_sent()` on real submits only.
 
 ## Tests
 

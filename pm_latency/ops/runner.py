@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version="pm-latency 0.6.0",
+        version="pm-latency 0.6.1",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(

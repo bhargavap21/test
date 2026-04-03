@@ -11,11 +11,13 @@ import sys
 import time
 from pathlib import Path
 
-from pm_latency.connectors.binance_ws import DEFAULT_BINANCE_WS, run_binance_book_ticker
+from pm_latency.connectors.binance_ws import DEFAULT_BINANCE_WS
+from pm_latency.connectors.cex_mux import run_cex_feed
+from pm_latency.connectors.coinbase_ws import DEFAULT_COINBASE_WS
 from pm_latency.connectors.polymarket_ws import DEFAULT_CLOB_MARKET_WS, run_polymarket_market_ws
+from pm_latency.domain.cex_symbols import collect_token_ids_and_binance_symbols
 from pm_latency.domain.registry import MarketRegistry
 from pm_latency.domain.ticks import MarketTick
-from pm_latency.ops.ingest import _collect_tokens_and_symbols
 from pm_latency.ops.paper_eval import (
     candidates_from_snapshot_and_quotes,
     finalize_candidates_with_risk,
@@ -29,10 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def _symbol_to_asset(sym: str) -> str | None:
-    s = sym.upper().strip()
-    if s == "BTCUSDT":
+    s = sym.upper().strip().replace("-", "")
+    if s in ("BTCUSDT", "BTCUSD"):
         return "btc"
-    if s == "ETHUSDT":
+    if s in ("ETHUSDT", "ETHUSD"):
         return "eth"
     return None
 
@@ -43,7 +45,9 @@ async def run_paper(
     include_closed: bool,
     enable_cex: bool,
     enable_polymarket: bool,
+    cex_provider: str,
     binance_ws: str,
+    coinbase_ws: str,
     polymarket_ws: str,
     duration_s: float,
     min_edge: float,
@@ -62,7 +66,7 @@ async def run_paper(
         print("paper: no markets in registry; run `pm-runner discover` first.", file=sys.stderr)
         raise SystemExit(2)
 
-    token_ids, symbols = _collect_tokens_and_symbols(rows)
+    token_ids, _binance_syms = collect_token_ids_and_binance_symbols(rows)
     if not token_ids:
         print("paper: no token ids in registry.", file=sys.stderr)
         raise SystemExit(2)
@@ -130,7 +134,11 @@ async def run_paper(
                     )
                 )
         if batch:
-            intents = finalize_candidates_with_risk(risk, batch)
+            intents = finalize_candidates_with_risk(
+                risk,
+                batch,
+                record_rate_on_allow=False,
+            )
             _emit_intents(intents)
 
     async def on_tick(tick: MarketTick) -> None:
@@ -160,7 +168,8 @@ async def run_paper(
 
     print(
         f"paper: markets={len(rows)} tokens={len(token_ids)} "
-        f"cex={enable_cex} pm={enable_polymarket} min_edge={min_edge}",
+        f"cex={enable_cex} cex_provider={cex_provider if enable_cex else 'off'} "
+        f"pm={enable_polymarket} min_edge={min_edge}",
         file=sys.stderr,
     )
     if not enable_cex:
@@ -170,14 +179,16 @@ async def run_paper(
             file=sys.stderr,
         )
 
-    async def _guarded_binance() -> None:
+    async def _guarded_cex() -> None:
         if not enable_cex:
             await stop.wait()
             return
         try:
-            await run_binance_book_ticker(
-                ws_base=binance_ws,
-                symbols=symbols,
+            await run_cex_feed(
+                provider=cex_provider,
+                rows=rows,
+                binance_ws=binance_ws,
+                coinbase_ws=coinbase_ws,
                 on_tick=on_tick,
                 stop=stop,
             )
@@ -203,7 +214,7 @@ async def run_paper(
             print(f"paper: Polymarket exited ({type(e).__name__}: {e})", file=sys.stderr)
 
     try:
-        await asyncio.gather(_guarded_binance(), _guarded_pm())
+        await asyncio.gather(_guarded_cex(), _guarded_pm())
     finally:
         if log_fp:
             log_fp.close()
@@ -222,8 +233,18 @@ def main_paper(argv: list[str] | None = None) -> int:
     p.add_argument("--no-cex", action="store_true")
     p.add_argument("--no-polymarket", action="store_true")
     p.add_argument(
+        "--cex",
+        default=os.environ.get("CEX_PROVIDER", "auto"),
+        choices=("auto", "binance", "coinbase"),
+        help="CEX: auto = Binance then Coinbase if Binance fails (e.g. HTTP 451).",
+    )
+    p.add_argument(
         "--binance-ws",
         default=os.environ.get("BINANCE_WS_BASE", DEFAULT_BINANCE_WS),
+    )
+    p.add_argument(
+        "--coinbase-ws",
+        default=os.environ.get("COINBASE_WS_URL", DEFAULT_COINBASE_WS),
     )
     p.add_argument(
         "--polymarket-ws",
@@ -293,7 +314,9 @@ def main_paper(argv: list[str] | None = None) -> int:
                 include_closed=args.include_closed,
                 enable_cex=not args.no_cex,
                 enable_polymarket=not args.no_polymarket,
+                cex_provider=args.cex,
                 binance_ws=args.binance_ws,
+                coinbase_ws=args.coinbase_ws,
                 polymarket_ws=args.polymarket_ws,
                 duration_s=args.duration,
                 min_edge=args.min_edge,

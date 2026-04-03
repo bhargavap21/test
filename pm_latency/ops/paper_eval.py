@@ -109,8 +109,10 @@ def candidates_from_snapshot_and_quotes(
 def finalize_candidates_with_risk(
     risk: RiskEngine,
     candidates: list[PaperCandidate],
+    *,
+    record_rate_on_allow: bool = True,
 ) -> list[PaperIntent]:
-    """Run RiskEngine.evaluate in order; record rate-limit timestamps when allowed."""
+    """Run RiskEngine.evaluate in order; optionally record rate-limit timestamps when allowed."""
     out: list[PaperIntent] = []
     for c in candidates:
         req = OrderRequest(
@@ -121,7 +123,7 @@ def finalize_candidates_with_risk(
             ask_price=c.ask_price,
         )
         dec = risk.evaluate(req)
-        if dec.allowed:
+        if dec.allowed and record_rate_on_allow:
             risk.record_order_sent()
         out.append(
             PaperIntent(

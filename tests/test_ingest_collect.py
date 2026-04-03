@@ -1,5 +1,5 @@
+from pm_latency.domain.cex_symbols import collect_token_ids_and_binance_symbols
 from pm_latency.domain.models import TradedMarket
-from pm_latency.ops.ingest import _collect_tokens_and_symbols
 
 
 def _row(asset: str, tokens: tuple[str, ...]) -> TradedMarket:
@@ -33,6 +33,6 @@ def test_collect_dedupes_and_sorts_symbols():
         _row("eth", ("c", "d")),
         _row("btc", ("a", "b")),
     ]
-    tokens, syms = _collect_tokens_and_symbols(rows)
+    tokens, syms = collect_token_ids_and_binance_symbols(rows)
     assert syms == ("BTCUSDT", "ETHUSDT")
     assert tokens == ("a", "b", "c", "d")

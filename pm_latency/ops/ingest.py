@@ -13,37 +13,13 @@ import time
 from collections import deque
 from pathlib import Path
 
-from pm_latency.connectors.binance_ws import DEFAULT_BINANCE_WS, run_binance_book_ticker
+from pm_latency.connectors.binance_ws import DEFAULT_BINANCE_WS
+from pm_latency.connectors.cex_mux import run_cex_feed
+from pm_latency.connectors.coinbase_ws import DEFAULT_COINBASE_WS
 from pm_latency.connectors.polymarket_ws import DEFAULT_CLOB_MARKET_WS, run_polymarket_market_ws
-from pm_latency.domain.models import TradedMarket
+from pm_latency.domain.cex_symbols import collect_token_ids_and_binance_symbols
 from pm_latency.domain.registry import MarketRegistry
 from pm_latency.domain.ticks import MarketTick
-
-
-def _asset_to_binance_symbol(asset: str) -> str:
-    a = asset.lower().strip()
-    if a == "btc":
-        return "BTCUSDT"
-    if a == "eth":
-        return "ETHUSDT"
-    raise ValueError(f"unsupported registry asset for CEX: {asset!r}")
-
-
-def _collect_tokens_and_symbols(
-    rows: list[TradedMarket],
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Unique token ids (order preserved) and Binance symbols for those assets."""
-    token_ids: list[str] = []
-    seen: set[str] = set()
-    assets: set[str] = set()
-    for r in rows:
-        assets.add(r.asset)
-        for tid in r.token_ids:
-            if tid not in seen:
-                seen.add(tid)
-                token_ids.append(str(tid))
-    symbols = tuple(_asset_to_binance_symbol(a) for a in sorted(assets))
-    return tuple(token_ids), symbols
 
 
 def _recv_delay_ms(tick: MarketTick) -> float | None:
@@ -109,7 +85,9 @@ async def run_dual_ingest(
     include_closed: bool,
     enable_cex: bool,
     enable_polymarket: bool,
+    cex_provider: str,
     binance_ws: str,
+    coinbase_ws: str,
     polymarket_ws: str,
     duration_s: float,
     verbose: bool,
@@ -125,14 +103,15 @@ async def run_dual_ingest(
         )
         raise SystemExit(2)
 
-    token_ids, symbols = _collect_tokens_and_symbols(rows)
+    token_ids, symbols = collect_token_ids_and_binance_symbols(rows)
     if not token_ids:
         print("ingest: no clob token ids in registry rows.", file=sys.stderr)
         raise SystemExit(2)
 
     print(
         f"ingest: {len(rows)} market row(s), {len(token_ids)} token id(s), "
-        f"cex={enable_cex} symbols={symbols if enable_cex else ()}, "
+        f"cex={enable_cex} provider={cex_provider if enable_cex else 'off'} "
+        f"binance_symbols={symbols if enable_cex else ()}, "
         f"polymarket={enable_polymarket}",
         file=sys.stderr,
     )
@@ -193,14 +172,16 @@ async def run_dual_ingest(
 
     reporter = asyncio.create_task(_reporter())
 
-    async def _guarded_binance() -> None:
+    async def _guarded_cex() -> None:
         if not enable_cex:
             await stop.wait()
             return
         try:
-            await run_binance_book_ticker(
-                ws_base=binance_ws,
-                symbols=symbols,
+            await run_cex_feed(
+                provider=cex_provider,
+                rows=rows,
+                binance_ws=binance_ws,
+                coinbase_ws=coinbase_ws,
                 on_tick=on_tick,
                 stop=stop,
             )
@@ -229,7 +210,7 @@ async def run_dual_ingest(
             )
 
     try:
-        await asyncio.gather(_guarded_binance(), _guarded_polymarket())
+        await asyncio.gather(_guarded_cex(), _guarded_polymarket())
     finally:
         reporter.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -264,9 +245,20 @@ def main_ingest(argv: list[str] | None = None) -> int:
         help="Skip Polymarket CLOB WebSocket (CEX-only debug).",
     )
     p.add_argument(
+        "--cex",
+        default=os.environ.get("CEX_PROVIDER", "auto"),
+        choices=("auto", "binance", "coinbase"),
+        help="CEX feed: auto tries Binance then Coinbase (e.g. after HTTP 451).",
+    )
+    p.add_argument(
         "--binance-ws",
         default=os.environ.get("BINANCE_WS_BASE", DEFAULT_BINANCE_WS),
         help="Binance combined stream base URL.",
+    )
+    p.add_argument(
+        "--coinbase-ws",
+        default=os.environ.get("COINBASE_WS_URL", DEFAULT_COINBASE_WS),
+        help="Coinbase Exchange WebSocket URL.",
     )
     p.add_argument(
         "--polymarket-ws",
@@ -316,7 +308,9 @@ def main_ingest(argv: list[str] | None = None) -> int:
                 include_closed=args.include_closed,
                 enable_cex=not args.no_cex,
                 enable_polymarket=not args.no_polymarket,
+                cex_provider=args.cex,
                 binance_ws=args.binance_ws,
+                coinbase_ws=args.coinbase_ws,
                 polymarket_ws=args.polymarket_ws,
                 duration_s=args.duration,
                 verbose=args.verbose,

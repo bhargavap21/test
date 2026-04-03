@@ -1,3 +1,3 @@
 """Polymarket short-horizon latency bot packages (incremental build)."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
