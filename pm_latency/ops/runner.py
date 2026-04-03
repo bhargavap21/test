@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
 
     av = list(sys.argv[1:] if argv is None else argv)
 
+    if av and av[0] == "paper":
+        from pm_latency.ops.paper_runner import main_paper
+
+        return main_paper(av[1:])
+
     if av and av[0] == "risk":
         from pm_latency.ops.risk_admin import main_risk
 
@@ -75,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version="pm-latency 0.5.0",
+        version="pm-latency 0.6.0",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(

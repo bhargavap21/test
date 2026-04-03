@@ -1,6 +1,6 @@
 # pm-latency
 
-Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6), Phase 4: [#1](https://github.com/bhargavap21/test/issues/1), Phase 5: [#7](https://github.com/bhargavap21/test/issues/7)).
+Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6), Phase 4: [#1](https://github.com/bhargavap21/test/issues/1), Phase 5: [#7](https://github.com/bhargavap21/test/issues/7), Phase 6: [#2](https://github.com/bhargavap21/test/issues/2)).
 
 ## Requirements
 
@@ -79,6 +79,19 @@ pm-runner risk status
 pm-runner risk dry-order --condition-id 0xabc --model-prob 0.58 --ask 0.52
 pm-runner risk kill && pm-runner risk unkill
 ```
+
+### Paper trading loop (Phase 6)
+
+Runs the same WebSocket feeds as `ingest`, maintains per-market fair value + Polymarket quotes, evaluates **`model_prob - ask >= min_edge`**, runs **`RiskEngine`** sequentially, and prints **one JSON line per intent** to stdout (optional `--log-file`). Does **not** post orders.
+
+```bash
+pm-runner discover
+pm-runner paper --duration 300 --min-edge 0.02 --log-file data/paper_intents.jsonl
+```
+
+`paper` needs a **CEX mid** for the model; if Binance WS is blocked, point `BINANCE_WS_BASE` at another reachable feed or run `ingest`/`paper` from a host that can reach Binance.
+
+Use `pm-runner risk kill` to verify intents show `risk_allowed: false`.
 
 ## Tests
 
