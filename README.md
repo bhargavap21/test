@@ -1,6 +1,6 @@
 # pm-latency
 
-Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6), Phase 4: [#1](https://github.com/bhargavap21/test/issues/1)).
+Incremental build for short-horizon Polymarket CLOB tooling (latency / stale-quote strategy). Tracked in GitHub issues (Phase 1: [#3](https://github.com/bhargavap21/test/issues/3), Phase 2: [#5](https://github.com/bhargavap21/test/issues/5), Phase 3: [#6](https://github.com/bhargavap21/test/issues/6), Phase 4: [#1](https://github.com/bhargavap21/test/issues/1), Phase 5: [#7](https://github.com/bhargavap21/test/issues/7)).
 
 ## Requirements
 
@@ -67,6 +67,18 @@ pm-runner fairvalue --cex-mid 95000.5 \
 ```
 
 Use `--condition-id` to target one row. Anchor = first CEX mid **on or after** `window_start_ts` (simulated time advances via ticks in tests; live use feeds timestamps consistently).
+
+### Risk engine (Phase 5)
+
+- **Limits** from env: `BANKROLL_USD`, `MAX_NOTIONAL_USD` (total exposure), `MAX_MARKET_NOTIONAL_USD`, `MAX_ORDER_NOTIONAL_USD`, `DAILY_LOSS_LIMIT_USD`, `KELLY_FRACTION`, `MAX_ORDERS_PER_MINUTE`.
+- **Kill switch:** `PM_KILL_SWITCH=1` or create the file `PM_KILL_FILE` (default `data/kill`) via `pm-runner risk kill`.
+- **State:** `PM_RISK_STATE_PATH` (default `data/risk_state.json`) stores daily realized PnL, per-`condition_id` exposure, and recent order timestamps for rate limiting.
+
+```bash
+pm-runner risk status
+pm-runner risk dry-order --condition-id 0xabc --model-prob 0.58 --ask 0.52
+pm-runner risk kill && pm-runner risk unkill
+```
 
 ## Tests
 
