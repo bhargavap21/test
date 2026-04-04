@@ -23,6 +23,7 @@ from pm_latency.ops.paper_eval import (
     finalize_candidates_with_risk,
     intent_to_jsonable,
 )
+from pm_latency.paperdash.ledger import PaperLedger
 from pm_latency.risk.engine import RiskEngine
 from pm_latency.strategy.fair_value import WindowFairValueState
 from pm_latency.strategy.volatility import EwmaVol
@@ -59,6 +60,8 @@ async def run_paper(
     kill_file: Path,
     log_file: Path | None,
     also_stderr: bool,
+    ledger: PaperLedger | None,
+    simulate_orders: bool,
 ) -> None:
     reg = MarketRegistry(registry_path)
     rows = list(reg.iter_tradable() if not include_closed else reg.iter_all())
@@ -106,6 +109,18 @@ async def run_paper(
                 log_fp.flush()
             if also_stderr:
                 print(line, file=sys.stderr, flush=True)
+            if ledger is not None and simulate_orders and it.risk.allowed and it.risk.contracts > 0:
+                d = json.loads(line)
+                ledger.record_simulated_buy(
+                    condition_id=it.condition_id,
+                    event_slug=it.event_slug,
+                    outcome=it.outcome,
+                    token_id=it.token_id,
+                    contracts=float(it.risk.contracts),
+                    entry_price=float(it.ask_price),
+                    intent_id=str(d["intent_id"]),
+                    intent_key=str(d["intent_key"]),
+                )
 
     async def maybe_evaluate() -> None:
         nonlocal last_eval_mono
@@ -142,6 +157,7 @@ async def run_paper(
             _emit_intents(intents)
 
     async def on_tick(tick: MarketTick) -> None:
+        snap: dict[str, tuple[float | None, float | None]] | None = None
         async with lock:
             if (
                 tick.source == "polymarket"
@@ -149,6 +165,8 @@ async def run_paper(
                 and tick.best_ask is not None
             ):
                 quotes_by_token[tick.symbol] = (tick.best_bid, tick.best_ask)
+                if ledger is not None:
+                    snap = dict(quotes_by_token)
             elif tick.source == "cex" and tick.mid is not None:
                 asset = _symbol_to_asset(tick.symbol)
                 if asset:
@@ -156,6 +174,8 @@ async def run_paper(
                     for st in fv_states.values():
                         if st.market.asset == asset:
                             st.on_cex_tick(float(tick.mid), tick.ts_exchange_ms)
+        if ledger is not None and snap:
+            ledger.update_quotes(snap)
         await maybe_evaluate()
 
     if duration_s > 0:
@@ -169,7 +189,8 @@ async def run_paper(
     print(
         f"paper: markets={len(rows)} tokens={len(token_ids)} "
         f"cex={enable_cex} cex_provider={cex_provider if enable_cex else 'off'} "
-        f"pm={enable_polymarket} min_edge={min_edge}",
+        f"pm={enable_polymarket} min_edge={min_edge} "
+        f"ledger={ledger.path if ledger else 'off'} simulate={simulate_orders}",
         file=sys.stderr,
     )
     if not enable_cex:
@@ -297,6 +318,33 @@ def main_paper(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Mirror each intent line to stderr.",
     )
+    p.add_argument(
+        "--ledger-db",
+        default=os.environ.get("PAPER_LEDGER_DB", "data/paper_ledger.db"),
+        help="SQLite path for simulated fills + dashboard.",
+    )
+    p.add_argument(
+        "--no-ledger",
+        action="store_true",
+        help="Disable simulated fills (intents / JSONL only).",
+    )
+    p.add_argument(
+        "--no-simulate",
+        action="store_true",
+        help="Log intents only; do not write simulated fills to ledger.",
+    )
+    p.add_argument(
+        "--taker-fee-bps",
+        type=float,
+        default=float(os.environ.get("PAPER_TAKER_FEE_BPS", "0")),
+        help="Assumed taker fee on entry notional (basis points).",
+    )
+    p.add_argument(
+        "--redeem-fee-bps",
+        type=float,
+        default=float(os.environ.get("PAPER_REDEEM_FEE_BPS", "0")),
+        help="Assumed fee on winning payout at settlement (basis points).",
+    )
     p.add_argument("-q", "--quiet", action="store_true")
     args = p.parse_args(argv)
 
@@ -306,6 +354,14 @@ def main_paper(argv: list[str] | None = None) -> int:
     )
 
     lf = Path(args.log_file) if args.log_file.strip() else None
+    ldb = args.ledger_db.strip()
+    led: PaperLedger | None = None
+    if not args.no_ledger and ldb:
+        led = PaperLedger(
+            Path(ldb),
+            taker_fee_bps=args.taker_fee_bps,
+            redeem_fee_bps=args.redeem_fee_bps,
+        )
 
     try:
         asyncio.run(
@@ -328,6 +384,8 @@ def main_paper(argv: list[str] | None = None) -> int:
                 kill_file=Path(args.kill_file),
                 log_file=lf,
                 also_stderr=args.also_stderr,
+                ledger=led,
+                simulate_orders=not args.no_simulate,
             )
         )
     except KeyboardInterrupt:

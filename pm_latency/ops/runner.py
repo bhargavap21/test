@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
 
     av = list(sys.argv[1:] if argv is None else argv)
 
+    if av and av[0] == "dashboard":
+        from pm_latency.ops.dashboard import main_dashboard
+
+        return main_dashboard(av[1:])
+
     if av and av[0] == "paper":
         from pm_latency.ops.paper_runner import main_paper
 
@@ -80,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version="pm-latency 0.6.1",
+        version="pm-latency 0.7.0",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(

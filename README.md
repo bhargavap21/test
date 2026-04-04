@@ -95,6 +95,25 @@ Use `pm-runner risk kill` to verify intents show `risk_allowed: false`.
 
 Paper mode does **not** increment the risk engine’s orders-per-minute counter (so high `eval-interval` traffic does not false-trigger `rate_limit_orders_per_minute`). Live execution will call `record_order_sent()` on real submits only.
 
+### Paper ledger + dashboard (simulated P&L)
+
+When `risk_allowed` is true, the paper loop can record **simulated fills** (buy at `ask`, size = Kelly `contracts`) into **`PAPER_LEDGER_DB`** (default `data/paper_ledger.db`).
+
+- **Fees:** `PAPER_TAKER_FEE_BPS` on entry notional, `PAPER_REDEEM_FEE_BPS` on winning payout at settlement (set to your best estimate of Polymarket taker + redemption costs).
+- **Unrealized:** mark-to-mid from the **same** Polymarket WS feed (approximate).
+- **Realized:** dashboard calls Gamma `/markets?condition_ids=…` and settles when `outcomePrices` show a winner (`~1` / `~0`).
+
+```bash
+pip install -e ".[dashboard]"
+pm-runner paper --ledger-db data/paper_ledger.db --taker-fee-bps 50 --redeem-fee-bps 10 \
+  --duration 0 --log-file data/paper_intents.jsonl
+# other terminal:
+pm-runner dashboard --port 8765
+# open http://127.0.0.1:8765
+```
+
+Use **`--no-simulate`** to log intents without recording fills, or **`--no-ledger`** to disable the ledger file entirely.
+
 ## Tests
 
 ```bash
