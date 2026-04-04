@@ -56,6 +56,11 @@ class PaperLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.path) as conn:
             conn.executescript(SCHEMA)
+            conn.execute(
+                "UPDATE paper_fills SET condition_id = lower(trim(condition_id)) "
+                "WHERE condition_id != lower(trim(condition_id))"
+            )
+            conn.commit()
 
     def record_simulated_buy(
         self,
@@ -71,6 +76,7 @@ class PaperLedger:
     ) -> int:
         if contracts <= 0 or entry_price <= 0:
             return -1
+        cid_norm = str(condition_id).strip().lower()
         notional = contracts * entry_price
         fee_in = _fee_usd(notional, self.taker_fee_bps)
         ts = time.time()
@@ -85,7 +91,7 @@ class PaperLedger:
                 """,
                 (
                     ts,
-                    condition_id,
+                    cid_norm,
                     event_slug,
                     outcome,
                     token_id,
@@ -140,7 +146,7 @@ class PaperLedger:
 
     def settle_from_gamma_market(self, market: dict[str, Any]) -> int:
         """Settle open fills for this condition_id using Gamma market JSON. Returns rows updated."""
-        cid = str(market.get("conditionId") or "")
+        cid = str(market.get("conditionId") or "").strip().lower()
         if not cid:
             return 0
         closed = bool(market.get("closed"))
@@ -156,23 +162,34 @@ class PaperLedger:
             return 0
         if not isinstance(outs, list) or not isinstance(prices, list):
             return 0
-        if len(outs) != len(prices):
+        if len(outs) != len(prices) or not outs:
             return 0
 
-        winning: str | None = None
+        parsed: list[tuple[str, float]] = []
         for o, p in zip(outs, prices, strict=True):
             try:
-                pv = float(str(p).strip())
+                parsed.append((str(o).strip(), float(str(p).strip())))
             except ValueError:
-                continue
-            if pv >= 0.99:
-                winning = str(o)
+                return 0
+
+        winning: str | None = None
+        for o, p in parsed:
+            if p >= 0.99:
+                winning = o
                 break
         if winning is None:
-            return 0
+            uma_ok = str(market.get("umaResolutionStatus") or "").lower() == "resolved"
+            if not uma_ok:
+                return 0
+            sorted_p = sorted((p for _, p in parsed), reverse=True)
+            top, second = sorted_p[0], sorted_p[1] if len(sorted_p) > 1 else 0.0
+            if top <= 0.5 or (top - second) < 0.4:
+                return 0
+            best_i = max(range(len(parsed)), key=lambda i: parsed[i][1])
+            winning = parsed[best_i][0]
 
         fills = self.open_fills()
-        to_settle = [f for f in fills if f["condition_id"] == cid]
+        to_settle = [f for f in fills if str(f["condition_id"]).strip().lower() == cid]
         if not to_settle:
             return 0
 
@@ -181,7 +198,7 @@ class PaperLedger:
         with sqlite3.connect(self.path) as conn:
             for f in to_settle:
                 contracts = float(f["contracts"])
-                won = str(f["outcome"]) == winning
+                won = str(f["outcome"]).strip().casefold() == winning.casefold()
                 payout = contracts * 1.0 if won else 0.0
                 fee_out = _fee_usd(payout, self.redeem_fee_bps) if won else 0.0
                 cost = float(f["notional_gross"]) + float(f["fee_entry_usd"])
@@ -247,22 +264,28 @@ class PaperLedger:
             return [dict(r) for r in cur.fetchall()]
 
 
-def settle_all_open_from_gamma(ledger: PaperLedger, *, gamma_base: str) -> int:
+def settle_all_open_from_gamma(
+    ledger: PaperLedger,
+    *,
+    gamma_base: str,
+) -> tuple[int, list[str]]:
+    """Settle all open fills; returns (rows_settled, error_messages)."""
     from pm_latency.connectors.gamma import DEFAULT_GAMMA_BASE, fetch_markets_by_condition_ids
 
     base = gamma_base or DEFAULT_GAMMA_BASE
     cids = ledger.distinct_open_condition_ids()
+    errors: list[str] = []
     if not cids:
-        return 0
+        return 0, []
     total = 0
-    # Gamma may limit batch size; chunk
     chunk = 15
     for i in range(0, len(cids), chunk):
         batch = cids[i : i + chunk]
         try:
             markets = fetch_markets_by_condition_ids(base, batch)
-        except RuntimeError:
+        except RuntimeError as e:
+            errors.append(str(e))
             continue
         for m in markets:
             total += ledger.settle_from_gamma_market(m)
-    return total
+    return total, errors

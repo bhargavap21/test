@@ -65,6 +65,30 @@ def test_settle_loser(tmp_path: Path):
     assert s["realized_pnl_usd"] == pytest.approx(-2.5)
 
 
+def test_settle_checksum_address_match(tmp_path: Path):
+    """DB stores lower(); Gamma may return checksummed 0x."""
+    db = tmp_path / "p4.db"
+    led = PaperLedger(db)
+    led.record_simulated_buy(
+        condition_id="0xAbCdef0123456789abcdef0123456789abcdef12",
+        event_slug="x",
+        outcome="up",
+        token_id="t",
+        contracts=1.0,
+        entry_price=0.5,
+        intent_id="i",
+        intent_key="k",
+    )
+    market = {
+        "conditionId": "0xAbCdef0123456789abcdef0123456789abcdef12",
+        "closed": True,
+        "outcomes": json.dumps(["Up", "Down"]),
+        "outcomePrices": json.dumps(["1", "0"]),
+    }
+    assert led.settle_from_gamma_market(market) == 1
+    assert led.summary()["settled_trades"] == 1
+
+
 def test_mtm(tmp_path: Path):
     db = tmp_path / "p3.db"
     led = PaperLedger(db)

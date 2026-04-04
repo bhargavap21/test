@@ -25,8 +25,11 @@ def _ledger() -> PaperLedger:
 def api_summary() -> JSONResponse:
     led = _ledger()
     gamma = os.environ.get("GAMMA_API_BASE", DEFAULT_GAMMA_BASE)
-    settle_all_open_from_gamma(led, gamma_base=gamma)
-    return JSONResponse(led.summary())
+    settled, errs = settle_all_open_from_gamma(led, gamma_base=gamma)
+    s = led.summary()
+    s["last_settle_rows"] = settled
+    s["settle_errors"] = errs[:5]
+    return JSONResponse(s)
 
 
 @app.get("/api/trades")
@@ -39,8 +42,11 @@ def api_trades(limit: int = 100) -> JSONResponse:
 def api_refresh() -> JSONResponse:
     led = _ledger()
     gamma = os.environ.get("GAMMA_API_BASE", DEFAULT_GAMMA_BASE)
-    n = settle_all_open_from_gamma(led, gamma_base=gamma)
-    return JSONResponse({"settled_rows": n, "summary": led.summary()})
+    n, errs = settle_all_open_from_gamma(led, gamma_base=gamma)
+    summ = led.summary()
+    summ["last_settle_rows"] = n
+    summ["settle_errors"] = errs[:10]
+    return JSONResponse({"settled_rows": n, "settle_errors": errs, "summary": summ})
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -73,6 +79,7 @@ HTML_PAGE = """<!DOCTYPE html>
     Settlement pulls Gamma when markets close. MTM uses last Polymarket mid from the running paper process.
   </p>
   <button type="button" onclick="refresh()">Refresh + settle from Gamma</button>
+  <p class="note" id="settle-status"></p>
   <div class="grid" id="summary"></div>
   <h2>Recent trades</h2>
   <table><thead><tr>
@@ -84,6 +91,11 @@ HTML_PAGE = """<!DOCTYPE html>
     function cls(n) { return n > 0 ? 'pos' : (n < 0 ? 'neg' : ''); }
     async function load() {
       const s = await fetch('/api/summary').then(r => r.json());
+      let st = 'Last settle batch: ' + (s.last_settle_rows ?? '—') + ' row(s) updated.';
+      if (s.settle_errors && s.settle_errors.length) {
+        st += ' Gamma errors: ' + s.settle_errors.join(' | ');
+      }
+      document.getElementById('settle-status').textContent = st;
       document.getElementById('summary').innerHTML = `
         <div class="card"><b>Open trades</b><br/>${s.open_trades}</div>
         <div class="card"><b>Open cost (USD)</b><br/>${fmt(s.open_cost_usd)}</div>
